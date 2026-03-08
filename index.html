@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>教室音量ゲーム</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #001a33;
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+  }
+  #toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(0,0,0,0.5);
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 6px 18px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab-btn.active {
+    background: #00aaff;
+    border-color: #00aaff;
+  }
+  .tab-btn:hover:not(.active) {
+    background: rgba(255,255,255,0.25);
+  }
+  #toolbar-left { display: flex; gap: 8px; }
+  #toolbar-right { display: flex; gap: 8px; }
+  #icon-btn {
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: 18px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  #icon-btn:hover { background: rgba(255,255,255,0.3); }
+
+  #main-area {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+  }
+  #game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Level display overlay */
+  #level-display {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #level-name {
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    white-space: nowrap;
+  }
+  #level-label {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  }
+
+  /* Volume gauge */
+  #gauge-wrap {
+    position: absolute;
+    right: 12px;
+    top: 0;
+    bottom: 0;
+    width: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #gauge-container {
+    position: relative;
+    width: 28px;
+    height: 70%;
+    background: rgba(0,0,0,0.4);
+    border-radius: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    overflow: visible;
+  }
+  #gauge-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 12px;
+    transition: height 0.05s, background 0.3s;
+  }
+  .gauge-label {
+    position: absolute;
+    right: 34px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    pointer-events: none;
+  }
+  #gauge-target-zone {
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    background: rgba(255,255,0,0.35);
+    border: 2px solid #ffee00;
+    border-radius: 4px;
+    display: none;
+  }
+
+  /* Training overlay */
+  #training-overlay {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0,0,0,0.65);
+    border-radius: 16px;
+    padding: 14px 20px;
+    color: #fff;
+    z-index: 5;
+    pointer-events: none;
+    min-width: 200px;
+  }
+  #training-target {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  #training-progress-bar {
+    height: 12px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  #training-progress-fill {
+    height: 100%;
+    background: #ffee00;
+    border-radius: 6px;
+    width: 0%;
+    transition: width 0.1s;
+  }
+  #training-score-label { font-size: 13px; color: rgba(255,255,255,0.8); }
+  #training-score { font-size: 22px; font-weight: bold; color: #00ffaa; }
+
+  /* Clear effect */
+  #clear-effect {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 52px;
+    font-weight: bold;
+    color: #ffee00;
+    text-shadow: 0 0 30px #ff8800, 0 0 60px #ff4400;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 20;
+    text-align: center;
+    transition: opacity 0.3s;
+  }
+
+  /* Mic permission screen */
+  #mic-screen {
+    position: fixed;
+    inset: 0;
+    background: #001a33;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    color: #fff;
+    gap: 20px;
+  }
+  #mic-screen h1 { font-size: 32px; }
+  #mic-screen p { font-size: 16px; color: rgba(255,255,255,0.7); text-align: center; max-width: 320px; }
+  #mic-btn {
+    background: #00aaff;
+    border: none;
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
+    padding: 14px 40px;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #mic-btn:hover { background: #0088dd; }
+  #mic-error { color: #ff6666; font-size: 14px; display: none; text-align: center; max-width: 360px; line-height: 1.6; }
+
+  /* Settings panel */
+  #settings-panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 280px;
+    background: rgba(0, 20, 50, 0.97);
+    border-left: 1px solid rgba(255,255,255,0.2);
+    z-index: 50;
+    padding: 20px;
+    color: #fff;
+    transform: translateX(100%);
+    transition: transform 0.3s;
+    overflow-y: auto;
+  }
+  #settings-panel.open { transform: translateX(0); }
+  #settings-panel h2 { font-size: 20px; margin-bottom: 20px; }
+  .setting-row { margin-bottom: 20px; }
+  .setting-row label { display: block; font-size: 14px; margin-bottom: 6px; color: rgba(255,255,255,0.8); }
+  .setting-row input[type=range] { width: 100%; }
+  .setting-row .val { font-size: 13px; color: #00aaff; }
+  #close-settings {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 8px 20px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 10px;
+    width: 100%;
+  }
+  #close-settings:hover { background: rgba(255,255,255,0.2); }
+  #fullscreen-btn {
+    background: #00aaff;
+    border: none;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  #fullscreen-btn:hover { background: #0088dd; }
+
+  /* Training level selector */
+  #training-level-select {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .tlevel-btn {
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+  }
+  .tlevel-btn.active { background: #ffee00; color: #000; border-color: #ffee00; }
+</style>
+</head>
+<body>
+
+<!-- Mic permission screen -->
+<div id="mic-screen">
+  <h1>🎤 マイクの許可</h1>
+  <p>音量を測定するため、マイクへのアクセスを許可してください。</p>
+  <div id="iframe-warning" style="display:none; background:rgba(255,200,0,0.15); border:1px solid #ffcc00; border-radius:12px; padding:14px 20px; max-width:360px; text-align:center; color:#ffee88; font-size:14px; line-height:1.7;">
+    GASのiframe内ではマイクがブロックされます。<br>
+    下のボタンで新しいタブとして開いてください。<br>
+    <button id="open-tab-btn" style="margin-top:10px; background:#ffcc00; border:none; color:#000; font-size:16px; font-weight:bold; padding:10px 28px; border-radius:20px; cursor:pointer;" onclick="window.open(location.href, '_blank')">新しいタブで開く</button>
+  </div>
+  <button id="mic-btn" onclick="startMic()">マイクを許可する</button>
+  <div id="mic-error"></div>
+</div>
+
+<!-- Main app -->
+<div id="app" style="display:none">
+  <div id="toolbar">
+    <div id="toolbar-left">
+      <button class="tab-btn active" id="btn-main" onclick="switchMode('main')">メインゲーム</button>
+      <button class="tab-btn" id="btn-training" onclick="switchMode('training')">トレーニング</button>
+    </div>
+    <div id="toolbar-right">
+      <button id="icon-btn" onclick="toggleSettings()" title="設定">⚙</button>
+    </div>
+  </div>
+
+  <div id="main-area">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Level display -->
+    <div id="level-display">
+      <div id="level-name">しずかに</div>
+      <div id="level-label">レベル 0</div>
+    </div>
+
+    <!-- Volume gauge (right side) -->
+    <div id="gauge-wrap">
+      <div id="gauge-container">
+        <div id="gauge-fill"></div>
+        <div id="gauge-target-zone"></div>
+      </div>
+    </div>
+
+    <!-- Training overlay (top-left) -->
+    <div id="training-overlay" style="display:none">
+      <div id="training-target">レベル 1「ひそひそ声」を出してみよう！</div>
+      <div id="training-progress-bar"><div id="training-progress-fill"></div></div>
+      <div id="training-score-label">クリア回数</div>
+      <div id="training-score">0</div>
+      <div style="margin-top:10px; font-size:13px; color:rgba(255,255,255,0.7);">ターゲットレベル:</div>
+      <div id="training-level-select"></div>
+    </div>
+
+    <!-- Clear effect -->
+    <div id="clear-effect">✨ クリア！ ✨</div>
+  </div>
+</div>
+
+<!-- Settings panel -->
+<div id="settings-panel">
+  <h2>⚙ 設定</h2>
+  <button id="fullscreen-btn" onclick="toggleFullscreen()">フルスクリーン</button>
+  <div class="setting-row">
+    <label>感度 <span class="val" id="sens-val">1.0</span></label>
+    <input type="range" id="sensitivity" min="0.5" max="3.0" step="0.1" value="1.0"
+      oninput="sensitivity = parseFloat(this.value); document.getElementById('sens-val').textContent = sensitivity.toFixed(1)">
+  </div>
+  <div class="setting-row">
+    <label>魚の数 <span class="val" id="fish-val">10</span></label>
+    <input type="range" id="fish-count" min="3" max="20" step="1" value="10"
+      oninput="setFishCount(parseInt(this.value))">
+  </div>
+  <button id="close-settings" onclick="toggleSettings()">閉じる</button>
+</div>
+
+<script>
+// ===================== IFRAME DETECTION =====================
+(function() {
+  if (window !== window.top) {
+    document.getElementById('iframe-warning').style.display = 'block';
+  }
+})();
+
+// ===================== AUDIO =====================
+let audioCtx, analyser, dataArray, micStream;
+let sensitivity = 1.0;
+let volumeRaw = 0;
+let volumeSmooth = 0;
+const SMOOTH_FRAMES = 10;
+const smoothBuf = new Array(SMOOTH_FRAMES).fill(0);
+let smoothIdx = 0;
+
+async function startMic() {
+  const btn = document.getElementById('mic-btn');
+  const errEl = document.getElementById('mic-error');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '接続中...';
+
+  // HTTPS / localhost 以外では getUserMedia が使えない
+  if (location.protocol === 'file:') {
+    errEl.innerHTML = 'ローカルファイル（file://）では動作しません。<br>GASにデプロイするか、localhost で起動してください。';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'マイクを許可する';
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    errEl.innerHTML = 'このブラウザはマイク機能に対応していません。<br>Chrome または Edge をお使いください。';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'マイクを許可する';
+    return;
+  }
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    dataArray = new Uint8Array(analyser.fftSize);
+    document.getElementById('mic-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    resizeCanvas();
+    requestAnimationFrame(loop);
+  } catch(e) {
+    let msg = 'マイクの許可が必要です。';
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      if (window !== window.top) {
+        msg = 'iframeのためブラウザがマイクをブロックしています。<br>上の「新しいタブで開く」ボタンを使ってください。';
+        document.getElementById('iframe-warning').style.display = 'block';
+      } else {
+        msg = 'マイクへのアクセスが拒否されました。<br>ブラウザのアドレスバー横のアイコンから許可してください。';
+      }
+    } else if (e.name === 'NotFoundError') {
+      msg = 'マイクが見つかりません。マイクが接続されているか確認してください。';
+    } else {
+      msg = 'エラー: ' + e.name + ' — ' + e.message;
+    }
+    errEl.innerHTML = msg;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'マイクを許可する';
+  }
+}
+
+function getVolume() {
+  analyser.getByteTimeDomainData(dataArray);
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    const v = (dataArray[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / dataArray.length);
+  return Math.min(1, rms * 8 * sensitivity);
+}
+
+// ===================== LEVELS =====================
+const LEVELS = [
+  { id: 0, name: 'しずかに',      label: '無言',          threshold: 0,    color: '#66ccff' },
+  { id: 1, name: 'ひそひそ声',    label: '隣だけ聞こえる', threshold: 0.08, color: '#88ff88' },
+  { id: 2, name: 'ふつうの声',    label: 'グループ会話',   threshold: 0.25, color: '#ffcc44' },
+  { id: 3, name: 'はっぴょうの声', label: 'クラス発表',    threshold: 0.45, color: '#ff8844' },
+  { id: 4, name: 'そとの声',      label: '運動場',         threshold: 0.70, color: '#ff4444' },
+];
+
+function getLevel(v) {
+  let lv = 0;
+  for (let i = 0; i < LEVELS.length; i++) {
+    if (v >= LEVELS[i].threshold) lv = i;
+  }
+  return lv;
+}
+
+// ===================== FISH =====================
+let fish = [];
+let bubbles = [];
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+function makeFish() {
+  return {
+    x: Math.random() * canvas.width,
+    y: 100 + Math.random() * (canvas.height - 200),
+    vx: (Math.random() - 0.5) * 1.5,
+    vy: (Math.random() - 0.5) * 0.8,
+    size: 22 + Math.random() * 18,
+    color: `hsl(${Math.random()*360},80%,60%)`,
+    angle: 0,
+    scared: false,
+    fled: false,
+    returnTimer: 0,
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: 0.04 + Math.random() * 0.03,
+  };
+}
+
+function setFishCount(n) {
+  document.getElementById('fish-val').textContent = n;
+  while (fish.length < n) fish.push(makeFish());
+  while (fish.length > n) fish.pop();
+}
+
+function initFish() {
+  fish = [];
+  for (let i = 0; i < 10; i++) fish.push(makeFish());
+}
+
+function updateFish(level, dt) {
+  const scared = level >= 3;
+  const fled = level >= 4;
+
+  fish.forEach(f => {
+    f.scared = scared;
+    f.wobble += f.wobbleSpeed;
+
+    if (fled && !f.fled) {
+      // Flee off screen
+      const angle = Math.atan2(f.y - canvas.height / 2, f.x - canvas.width / 2);
+      f.vx = Math.cos(angle) * 8;
+      f.vy = Math.sin(angle) * 8;
+      f.fled = true;
+    }
+    if (!fled && f.fled) {
+      f.fled = false;
+      f.returnTimer = 120 + Math.random() * 120;
+      // Reset outside screen
+      const side = Math.floor(Math.random() * 4);
+      if (side === 0) { f.x = -60; f.y = Math.random() * canvas.height; }
+      else if (side === 1) { f.x = canvas.width + 60; f.y = Math.random() * canvas.height; }
+      else if (side === 2) { f.x = Math.random() * canvas.width; f.y = -60; }
+      else { f.x = Math.random() * canvas.width; f.y = canvas.height + 60; }
+      f.vx = (Math.random() - 0.5) * 1.5;
+      f.vy = (Math.random() - 0.5) * 0.8;
+    }
+
+    if (f.returnTimer > 0) {
+      f.returnTimer--;
+      if (f.returnTimer === 0) {
+        // Place fish at edge and give slow velocity toward center
+        f.vx = (canvas.width / 2 - f.x) * 0.005;
+        f.vy = (canvas.height / 2 - f.y) * 0.005;
+      }
+    }
+
+    if (!f.fled) {
+      let speed = scared ? 3.5 : 1;
+      // Natural swimming
+      f.vx += (Math.random() - 0.5) * 0.15;
+      f.vy += (Math.random() - 0.5) * 0.15 + Math.sin(f.wobble) * 0.02;
+      const maxSpd = scared ? 3.5 : 1.2;
+      const spd = Math.hypot(f.vx, f.vy);
+      if (spd > maxSpd) { f.vx *= maxSpd / spd; f.vy *= maxSpd / spd; }
+      if (spd < 0.3 && !scared) {
+        f.vx += (Math.random() - 0.5) * 0.5;
+        f.vy += (Math.random() - 0.5) * 0.5;
+      }
+      // Bounce off walls
+      const margin = 60;
+      if (f.x < margin) f.vx += 0.3;
+      if (f.x > canvas.width - margin) f.vx -= 0.3;
+      if (f.y < margin) f.vy += 0.3;
+      if (f.y > canvas.height - margin) f.vy -= 0.3;
+    }
+
+    f.x += f.vx;
+    f.y += f.vy;
+    if (f.vx !== 0 || f.vy !== 0) {
+      f.angle = Math.atan2(f.vy, f.vx);
+    }
+  });
+
+  // Remove fish that are far off screen
+  fish.forEach(f => {
+    if (f.fled) {
+      if (f.x < -200 || f.x > canvas.width + 200 || f.y < -200 || f.y > canvas.height + 200) {
+        // keep off screen until level drops
+      }
+    }
+  });
+}
+
+function drawFish(f) {
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.angle);
+  const s = f.size;
+  // Body
+  ctx.fillStyle = f.color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s, s * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.7, 0);
+  ctx.lineTo(-s * 1.3, -s * 0.5);
+  ctx.lineTo(-s * 1.3, s * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  // Eye
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(s * 0.4, -s * 0.1, s * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(s * 0.42, -s * 0.1, s * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ===================== BUBBLES =====================
+function addBubble(x, y) {
+  bubbles.push({ x, y, r: 3 + Math.random() * 5, vy: -1 - Math.random() * 1.5, life: 1 });
+}
+function updateBubbles() {
+  bubbles = bubbles.filter(b => b.life > 0);
+  bubbles.forEach(b => {
+    b.y += b.vy;
+    b.x += (Math.random() - 0.5) * 0.5;
+    b.life -= 0.01;
+  });
+}
+function drawBubbles() {
+  bubbles.forEach(b => {
+    ctx.save();
+    ctx.globalAlpha = b.life * 0.6;
+    ctx.strokeStyle = '#aaddff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+// ===================== RIPPLES (level 4) =====================
+let ripples = [];
+function addRipple() {
+  ripples.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, r: 10, life: 1 });
+}
+function updateRipples(level) {
+  if (level >= 4 && Math.random() < 0.15) addRipple();
+  ripples = ripples.filter(r => r.life > 0);
+  ripples.forEach(r => { r.r += 4; r.life -= 0.03; });
+}
+function drawRipples() {
+  ripples.forEach(r => {
+    ctx.save();
+    ctx.globalAlpha = r.life * 0.5;
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+// ===================== BACKGROUND =====================
+function drawBackground(level) {
+  const colors = [
+    ['#001a33', '#003366'],
+    ['#001a2b', '#003355'],
+    ['#001a22', '#003344'],
+    ['#220800', '#331100'],
+    ['#330000', '#550000'],
+  ];
+  const c = colors[Math.min(level, 4)];
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, c[0]);
+  grad.addColorStop(1, c[1]);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Light rays
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  ctx.fillStyle = '#88ccff';
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    const x = (canvas.width / 5) * i + canvas.width / 10;
+    ctx.moveTo(x - 30, 0);
+    ctx.lineTo(x + 30, 0);
+    ctx.lineTo(x + 60, canvas.height);
+    ctx.lineTo(x - 60, canvas.height);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Sand floor
+  const sandGrad = ctx.createLinearGradient(0, canvas.height - 60, 0, canvas.height);
+  sandGrad.addColorStop(0, 'rgba(180,150,80,0)');
+  sandGrad.addColorStop(1, 'rgba(180,150,80,0.5)');
+  ctx.fillStyle = sandGrad;
+  ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
+}
+
+// ===================== GAUGE =====================
+function updateGauge(v, level) {
+  const fill = document.getElementById('gauge-fill');
+  const pct = Math.round(v * 100);
+  fill.style.height = pct + '%';
+  fill.style.background = LEVELS[level].color;
+
+  const cont = document.getElementById('gauge-container');
+  // Update labels (first time only via JS)
+  if (!cont._labelsInit) {
+    cont._labelsInit = true;
+    LEVELS.forEach((lv, i) => {
+      const div = document.createElement('div');
+      div.className = 'gauge-label';
+      div.textContent = `${lv.id} ${lv.name.slice(0,3)}`;
+      div.style.bottom = (lv.threshold * 100) + '%';
+      div.style.transform = 'translateY(50%)';
+      cont.appendChild(div);
+    });
+  }
+}
+
+function updateTrainingGauge(trainingLevel) {
+  const tz = document.getElementById('gauge-target-zone');
+  const lo = LEVELS[trainingLevel].threshold;
+  const hi = trainingLevel + 1 < LEVELS.length ? LEVELS[trainingLevel + 1].threshold : 1;
+  tz.style.bottom = (lo * 100) + '%';
+  tz.style.height = ((hi - lo) * 100) + '%';
+  tz.style.display = 'block';
+}
+
+// ===================== LEVEL DISPLAY =====================
+function updateLevelDisplay(level) {
+  document.getElementById('level-name').textContent = `${LEVELS[level].name}`;
+  document.getElementById('level-label').textContent = `レベル ${level}「${LEVELS[level].label}」`;
+  document.getElementById('level-name').style.color = LEVELS[level].color;
+}
+
+// ===================== MODE =====================
+let mode = 'main'; // 'main' | 'training'
+let trainingTarget = 1;
+let trainingScore = 0;
+let trainingTimer = 0;     // frames in zone
+const TRAINING_HOLD = 180; // 3 seconds at 60fps
+let clearEffectTimer = 0;
+
+function switchMode(m) {
+  mode = m;
+  document.getElementById('btn-main').classList.toggle('active', m === 'main');
+  document.getElementById('btn-training').classList.toggle('active', m === 'training');
+  document.getElementById('training-overlay').style.display = m === 'training' ? 'block' : 'none';
+  document.getElementById('gauge-target-zone').style.display = m === 'training' ? 'block' : 'none';
+  if (m === 'training') {
+    buildTrainingLevelSelect();
+    updateTrainingUI();
+  }
+}
+
+function buildTrainingLevelSelect() {
+  const container = document.getElementById('training-level-select');
+  container.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'tlevel-btn' + (i === trainingTarget ? ' active' : '');
+    btn.textContent = `Lv${lv.id}`;
+    btn.onclick = () => setTrainingTarget(i);
+    container.appendChild(btn);
+  });
+}
+
+function setTrainingTarget(n) {
+  trainingTarget = n;
+  trainingTimer = 0;
+  document.querySelectorAll('.tlevel-btn').forEach((b, i) => b.classList.toggle('active', i === n));
+  updateTrainingUI();
+  updateTrainingGauge(n);
+}
+
+function updateTrainingUI() {
+  const lv = LEVELS[trainingTarget];
+  document.getElementById('training-target').textContent = `レベル${lv.id}「${lv.name}」を出してみよう！`;
+  document.getElementById('training-score').textContent = trainingScore;
+  const pct = Math.round((trainingTimer / TRAINING_HOLD) * 100);
+  document.getElementById('training-progress-fill').style.width = pct + '%';
+}
+
+function showClearEffect() {
+  const el = document.getElementById('clear-effect');
+  el.style.opacity = '1';
+  clearEffectTimer = 90;
+}
+
+// ===================== SETTINGS =====================
+let settingsOpen = false;
+function toggleSettings() {
+  settingsOpen = !settingsOpen;
+  document.getElementById('settings-panel').classList.toggle('open', settingsOpen);
+}
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+// ===================== RESIZE =====================
+function resizeCanvas() {
+  const area = document.getElementById('main-area');
+  canvas.width = area.clientWidth;
+  canvas.height = area.clientHeight;
+  initFish();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ===================== MAIN LOOP =====================
+let lastTime = 0;
+let currentLevel = 0;
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 16.67, 3);
+  lastTime = ts;
+
+  // Volume
+  if (analyser) {
+    volumeRaw = getVolume();
+    smoothBuf[smoothIdx++ % SMOOTH_FRAMES] = volumeRaw;
+    smoothIdx %= SMOOTH_FRAMES;
+    volumeSmooth = smoothBuf.reduce((a, b) => a + b, 0) / SMOOTH_FRAMES;
+  }
+
+  currentLevel = getLevel(volumeSmooth);
+
+  // Draw
+  drawBackground(currentLevel);
+  updateRipples(currentLevel);
+  drawRipples();
+  updateBubbles();
+
+  // Add bubbles when scared
+  if (currentLevel >= 3 && Math.random() < 0.3) {
+    const f = fish[Math.floor(Math.random() * fish.length)];
+    if (f) addBubble(f.x, f.y);
+  }
+
+  drawBubbles();
+  updateFish(currentLevel, dt);
+  fish.forEach(f => drawFish(f));
+
+  updateGauge(volumeSmooth, currentLevel);
+  updateLevelDisplay(currentLevel);
+
+  // Training mode
+  if (mode === 'training') {
+    const lo = LEVELS[trainingTarget].threshold;
+    const hi = trainingTarget + 1 < LEVELS.length ? LEVELS[trainingTarget + 1].threshold : 1;
+    const inZone = volumeSmooth >= lo && volumeSmooth < hi;
+    if (inZone) {
+      trainingTimer++;
+      if (trainingTimer >= TRAINING_HOLD) {
+        trainingScore++;
+        trainingTimer = 0;
+        showClearEffect();
+        // Auto advance
+        if (trainingTarget < LEVELS.length - 1) {
+          setTimeout(() => setTrainingTarget(trainingTarget + 1), 1500);
+        }
+      }
+    } else {
+      trainingTimer = Math.max(0, trainingTimer - 2);
+    }
+    updateTrainingUI();
+  }
+
+  // Clear effect fade
+  if (clearEffectTimer > 0) {
+    clearEffectTimer--;
+    if (clearEffectTimer === 0) {
+      document.getElementById('clear-effect').style.opacity = '0';
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
